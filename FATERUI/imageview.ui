@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>imageview</class>
+ <widget class="QDialog" name="imageview">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>435</width>
+    <height>362</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Image</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="../RES/uires.qrc">
+    <normaloff>:/ico/image.ico</normaloff>:/ico/image.ico</iconset>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">border-color: rgb(205, 204, 202);
+border-color: rgb(205, 204, 202);
+border-right-color: rgb(205, 204, 202);
+gridline-color: rgb(205, 204, 202);</string>
+  </property>
+ </widget>
+ <resources>
+  <include location="../RES/uires.qrc"/>
+ </resources>
+ <connections/>
+</ui>

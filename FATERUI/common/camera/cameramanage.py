@@ -1,0 +1,53 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '17/4/7'
+@author = 'chenliang'
+@email = 'chenliang2380@cvte.com'
+'''
+
+# import mindvision.camera_mindvision
+from . import virtualcamera
+
+class CameraManage(object):
+
+    _cameraList = {}
+
+    def __init__(self):
+        super(CameraManage, self).__init__()
+
+    @classmethod
+    def initCamera(cls, cameraid='mindvision'):
+
+        if cameraid is 'virtualcamera':
+            camfile = virtualcamera.VirtualCamera()
+            cls._cameraList['virtualcamera'] = camfile
+            return True
+        elif cameraid == 'mindvision':
+            cam = mindvision.camera_mindvision.MindVision()
+            print(cam.get_camera_id())
+            if cam.open():
+                cls._cameraList['mindvision'] = cam
+                return True
+            return False
+        return False
+
+    @classmethod
+    def setVirtualCamera(cls,dir):
+        if 'virtualcamera' in cls._cameraList:
+            cls._cameraList['virtualcamera'].set_img_dir(dir)
+            print('virtualcamera dir :',dir)
+
+    @classmethod
+    def captureImage(cls, cam):
+        if cam in cls._cameraList:
+            return cls._cameraList[cam].take_picture()
+        else:
+            if CameraManage.initCamera(cam):
+                return CameraManage.captureImage(cam)
+            else:
+                return None
+
+
+

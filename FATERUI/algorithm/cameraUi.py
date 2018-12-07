@@ -1,0 +1,104 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '17/4/7'
+@author = 'chenliang'
+@email = 'chenliang2380@cvte.cn'
+'''
+
+from FATERUI.common.camera.cameramanage import CameraManage
+import FATERUI.editwidget
+from FATERUI.paramwidget import *
+from collections import OrderedDict
+from datetime import datetime
+import time
+import numpy as np
+
+
+class CameraUi(ParamWidget):
+
+    def __init__(self, param=''):
+        super(CameraUi, self).__init__(param)
+        self._camera = None
+        self._enableTemp = True
+        self.setTemplateImage(None)
+        self.setWindowTitle("Camera Image1")
+        self._ownTmplImage = None
+        self._imgid=0
+
+    def _initParamStr(self):
+        self._parentName = 'Source'
+        self._name = 'Camera'
+        paramType = {'Rotate':['T',0,0,270,90],'Red':['T',0,0,100,1],'Green':['T',0,0,100,1],
+                     'Blue':['T',0,0,100,1], 'Exposure':['T',0,0,100,1],
+                     'Camera': ['C',['virtualcamera','mindvision']],'ROI':['R'],'Template':['I'],
+                     'YMirror':['CB',False],'XMirror':['CB',False]}
+        paramList = ['Camera','Rotate','XMirror','YMirror','Exposure','Red','Green','Blue','ROI','Template']
+        self._paramType = OrderedDict()
+        for i in paramList:
+            self._paramType[i]=paramType[i]
+        self._param = {'Rotate':0, 'Exposure': 50, 'Camera': 'virtualcamera',
+                       'XMirror':False,'YMirror':False,'Red': 10,'Template':'',
+                        'Green': 10, 'Blue': 10,'ROI':[0,0,50,50]}
+
+    def run(self):
+        # imgtmp = cv2.imread('./tmp.jpg')
+        # self.setTemplateImage(imgtmp)
+        # if self._imgid==0:
+        #     img = cv2.imread('./tmp.jpg')
+        # else:
+        #     img = cv2.imread('test3.jpg')
+        # self._imgid += 1
+        # self.setTemplateImage(img)
+        self.setProcessImage(None)
+        img = CameraManage.captureImage(self._param['Camera'])
+
+        if self._ownTmplImage is not None:
+            self.setTemplateImage(self._ownTmplImage)
+
+        rotate = self._param['Rotate']
+        if img is not None:
+            if rotate == 270:
+                img = cv2.transpose(img)
+                img = cv2.flip(img,0)
+            elif rotate == 90:
+                img = cv2.transpose(img)
+                img = cv2.flip(img,1)
+            elif rotate == 180:
+                img = cv2.flip(img,0)
+                img = cv2.flip(img,1)
+
+            if self._param['XMirror']:
+                img = cv2.flip(img, 0)
+            if self._param['YMirror']:
+                img = cv2.flip(img, 1)
+
+            self.setProcessImage(img)
+            self.setShowImage(img)
+
+            return FATERUI.editwidget.StatePass
+        else:
+            return FATERUI.editwidget.StateNg
+
+    def setTemplateInfo(self):
+        timestr = time.strftime('%Y%m%d_%H%M%S', time.localtime(time.time()))
+        self._param['Template'] = timestr+'Template.bmp'
+        self._ownTmplImage = self.getProcessImage()
+        self.setTemplateImage(self._ownTmplImage)
+        self.refreshParam('Template')
+
+    def saveTmplImg(self,str):
+        if self._ownTmplImage is not None:
+            print('setTemplateImg',str+'Template.bmp')
+            cv2.imwrite(str+self._param['Template'],self._ownTmplImage)
+
+    def loadTmplImg(self,str):
+        if os.path.exists(str):
+            try:
+                tmplimg=cv2.imread(str+self._param['Template'])
+                if tmplimg is not None:
+                    self._ownTmplImage = tmplimg
+            except Exception as e:
+                self._ownTmplImage = None
+                print(Exception,'load template image error!')

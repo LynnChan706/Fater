@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/IGVTriggerUISample">
+        <file>res/play.bmp</file>
+        <file>res/stop.bmp</file>
+        <file>res/IGVTriggerUISample.bmp</file>
+    </qresource>
+</RCC>

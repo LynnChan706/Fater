@@ -1,0 +1,508 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '15/3/31'
+@author = 'messi'
+@email = 'liaomingxi@cvte.cn'
+
+在包外的调用方法
+from aoi.tools import common_tools
+
+在包内的调用方法
+import common_tools
+'''
+
+import os
+import sys
+import statvfs
+
+import cv2
+import numpy as np
+import logging
+import hashlib
+import subprocess
+
+import pickle as pickle
+import zlib
+import base64
+
+from . import common_fun as cm_fun
+
+def get_rotate_mat(width, height, angle, scale, keep_all):
+    '''
+    得到原图片到旋转图片的坐标变换矩阵
+    :param width:
+    :param height:
+    :param angle:
+    :param scale:
+    :param keep_all:
+    :return:
+    '''
+    center = (height/2.0, width/2.0)
+    if keep_all:
+        # 保留边角，但是如果图片大小不片，会导致图片缩小
+        pt0 = cm_fun.rotate(center=center,
+                            angle=-angle,
+                            point=cm_fun.zoom_center(scale=scale, center=center, point=(0, 0)))
+        pt1 = cm_fun.rotate(center=center,
+                            angle=-angle,
+                            point=cm_fun.zoom_center(scale=scale, center=center, point=(width, height)))
+        pt2 = cm_fun.rotate(center=center,
+                            angle=-angle,
+                            point=cm_fun.zoom_center(scale=scale, center=center, point=(0, height)))
+        pt3 = cm_fun.rotate(center=center,
+                            angle=-angle,
+                            point=cm_fun.zoom_center(scale=scale, center=center, point=(width, 0)))
+        left = min([pt0[0], pt1[0], pt2[0], pt3[0]])
+        right = max([pt0[0], pt1[0], pt2[0], pt3[0]])
+        top = min([pt0[1], pt1[1], pt2[1], pt3[1]])
+        bottom = max([pt0[1], pt1[1], pt2[1], pt3[1]])
+        if left < 0:
+            dw = -left
+        else:
+            dw = 0
+        if top < 0:
+            dh = -top
+        else:
+            dh = -top
+    else:
+        dw, dh = 0, 0
+    # 计算旋转矩阵
+    rot_mat = cv2.getRotationMatrix2D(center, angle, scale)
+
+    # 根据图片中心位置、放大倍数、旋转角度计算图片中心偏移
+    # 更新旋转矩阵中的偏移量
+    rot_mat[0, 2] += dw
+    rot_mat[1, 2] += dh
+    rot_mat = np.vstack((rot_mat, np.array([0, 0, 1])))
+    return rot_mat
+
+
+def transform_image(image, **kw):
+    '''
+    旋转图片，正方向是逆时针方向
+    :param image:原图片
+    :param kw:
+        center:旋转中心
+        angle:旋转角度
+        scale:缩放比例
+        keep_all:保留边角
+    :return:旋转后的图片
+    '''
+    h, w = image.shape[:2]
+    center = (h / 2.0, w / 2.0)
+    angle = 0.0
+    scale = 1.0
+    if 'center' in kw:
+        center = kw['center']
+    if 'angle' in kw:
+        angle = kw['angle']
+    if 'scale' in kw:
+        scale = kw['scale']
+    if 'keep_all' in kw:
+        if kw['keep_all']:
+            # 保留边角,但是如果图片大小不变,会导致图片缩小
+            # 首先,将图片的四个顶点以中心旋转指定的角度
+            pt0 = cm_fun.rotate(center=center,
+                                angle=-angle,
+                                point=cm_fun.zoom_center(scale=scale, center=center, point=(0, 0)))
+            pt1 = cm_fun.rotate(center=center,
+                                angle=-angle,
+                                point=cm_fun.zoom_center(scale=scale, center=center, point=(w, h)))
+            pt2 = cm_fun.rotate(center=center,
+                                angle=-angle,
+                                point=cm_fun.zoom_center(scale=scale, center=center, point=(0, h)))
+            pt3 = cm_fun.rotate(center=center,
+                                angle=-angle,
+                                point=cm_fun.zoom_center(scale=scale, center=center, point=(w, 0)))
+            # 计算旋转后图片的左, 右和上, 下顶点
+            left = min([pt0[0], pt1[0], pt2[0], pt3[0]])
+            right = max([pt0[0], pt1[0], pt2[0], pt3[0]])
+            top = min([pt0[1], pt1[1], pt2[1], pt3[1]])
+            bottom = max([pt0[1], pt1[1], pt2[1], pt3[1]])
+            # 判断顶点是否出了边界,得到新的宽高nw, nh和偏移量dw, dh
+            nw = right - left
+            dw = -left
+            nh = bottom - top
+            dh = -top
+        else:
+            nw, nh = w, h
+            dw, dh = 0, 0
+    else:
+        nw, nh = w, h
+        dw, dh = 0, 0
+    # 如果小数点后的数小于1e-4,则取整,否则为float
+    if nw-int(nw) < 1e-4:
+        nw = int(nw)
+    if nh-int(nh) < 1e-4:
+        nh = int(nh)
+    nw, nh = float(nw), float(nh)
+    # 计算旋转矩阵
+    rot_mat = cv2.getRotationMatrix2D(center, angle, scale)
+    # matrix参数用于在外部得到旋转矩阵
+    if 'matrix' in kw:
+        matrix = kw['matrix']
+        matrix.append(rot_mat)
+
+    # 根据图片中心位置、放大倍数、旋转角度计算图片中心偏移
+    # 更新旋转矩阵中的偏移量
+    rot_mat[0, 2] += dw
+    rot_mat[1, 2] += dh
+    # 对图片进行旋转得到目标图片
+    dst_image = cv2.warpAffine(image,
+                               rot_mat,
+                               (int(np.ceil(nw)), int(np.ceil(nh))),
+                               flags=cv2.INTER_LINEAR)
+    return dst_image
+
+
+def dig_component(image, component):
+    '''
+    截取某个元件的图片
+    :param image: 大图
+    :param component:元件属性字典
+    :return:
+    '''
+    angle = component.get('angle', 0)
+    x, y, w, h = component['box']
+    if angle == 0:
+        sub_image = image[int(y - h / 2.0):int(y + h / 2.0),
+                          int(x - w / 2.0):int(x + w / 2.0)].copy()
+    else:
+        angle = component['angle']
+        rad = angle*np.pi/180
+        top_w = (h / 2.0 * np.cos(rad) - w / 2.0 * np.sin(rad))
+        top_h = (h / 2.0 * np.cos(rad) + w / 2.0 * np.sin(rad))
+        right_w = (w / 2.0 * np.cos(rad) + h / 2.0 * np.sin(rad))
+        right_h = (w / 2.0 * np.sin(rad) - h / 2.0 * np.cos(rad))
+        max_x = max(abs(top_w), abs(right_w))
+        max_y = max(abs(top_h), abs(right_h))
+        rect = (x, y, max_x*2, max_y*2)
+        sub_image = dig_component(image, {'box': rect})
+        sub_image = transform_image(sub_image, angle=angle, center=(max_x, max_y), keep_all=True)
+        y, x = sub_image.shape[:2]
+        sub_image = dig_component(sub_image, {'box': (x/2.0, y/2.0, w, h)})
+    return sub_image
+
+
+def dig_image(image, component_list):
+    '''
+    通过元件列表截取图片
+    :param image: 大图
+    :param component_list:元件列表，每个元件是一个字典
+    :return:
+    '''
+    sub_image_list = []
+    for component in component_list:
+        sub_image = dig_component(image, component)
+        sub_image_list.append(sub_image)
+    return sub_image_list
+
+
+def rotate_component(component, angle, matrix, allow_edit=False):
+    '''
+    旋转元件
+    :param component:
+    :param angle:
+    :param matrix:
+    :param allow_edit:
+    :return:
+    '''
+    if not allow_edit:
+        r_component = dict(component)
+    else:
+        r_component = component
+
+    x, y, w, h = r_component['box']
+    x, y, _ = matrix.dot((x, y, 1))
+    r_component['box'] = (x, y, w, h)
+    r_component['angle'] += angle
+    return r_component
+
+def rotate_component_list(component_list, angle, matrix):
+    rotate_list = [rotate_component(component, angle, matrix) for component in component_list]
+    return rotate_list
+
+
+def read_proc_stat():
+    """Read the current system cpu usage from /proc/stat.
+    cpu  15579  99  13680   698457  10939   40      651     0   0
+    cpu0 1669   7   1974    338065  1396    5       9       0   0
+    cpu1 13910  91  11705   360391  9542    35      641     0   0
+          user nice system   idle   iowait  irq   softirq
+
+    解析：
+    参数（单位：jiffies）
+        (jiffies是内核中的一个全局变量，用来记录自系统启动一来产生的节拍数，
+        在linux中，一个节拍大致可理解为操作系统进程调度的最小时间片，
+        不同linux内核可能值有不同，通常在1ms到10ms之间)
+    user ( 15579 )  从系统启动开始累计到当前时刻，处于用户态的运行时间，不包含 nice值为负进程。
+    nice (99)       从系统启动开始累计到当前时刻，nice值为负的进程所占用的CPU时间
+    system (13680)  从系统启动开始累计到当前时刻，处于核心态的运行时间
+    idle (698457)   从系统启动开始累计到当前时刻，除IO等待时间以外的其它等待时间
+    iowait (10939)  从系统启动开始累计到当前时刻，IO等待时间(since 2.5.41)
+    irq (40)        从系统启动开始累计到当前时刻，硬中断时间(since 2.6.0-test4)
+    softirq (651)   从系统启动开始累计到当前时刻，软中断时间(since 2.6.0-test4)
+    """
+    try:
+        fd = open("/proc/stat", 'r')
+        lines = fd.readlines()
+    finally:
+        if fd:
+            fd.close()
+    cpus = []
+    for line in lines:
+        l = line.split()
+        if len(l) < 5:
+            continue
+        if l[0].startswith('cpu'):
+            cpus.append(l)
+    if len(cpus) > 0:
+        cpus.pop(0)
+    return cpus
+
+
+def get_cpu_usage(cpu_status_start, cpu_status_end):
+    usages = []
+    for start, end in zip(cpu_status_start, cpu_status_end):
+        cpu_ticks = list(map(int, start[1:8]))
+        total_time_start = sum(cpu_ticks)
+        total_used_time_start = sum(cpu_ticks[1:4])
+
+        cpu_ticks = list(map(int, end[1:8]))
+        total_time_end = sum(cpu_ticks)
+        total_used_time_end = sum(cpu_ticks[1:4])
+        if total_time_end - total_time_start != 0:
+            cpu_usage = (total_used_time_end - total_used_time_start) * 100.0 / (total_time_end - total_time_start)
+        else:
+            cpu_usage = 0
+        usages.append(cpu_usage)
+    return usages
+
+
+def get_mem_usage():
+    try:
+        fd = open("/proc/meminfo", 'r')
+        lines = fd.readlines()
+        fd.close()
+    except Exception as ex:
+        logging.getLogger('aoi.common.tools').error("Error handler: %s" % ex)
+        return 0.0
+
+    mem_total = 0
+    mem_available = 0
+    for line in lines:
+        if line.startswith('MemTotal'):
+            mem_total = int(list(filter(str.isdigit, line)))
+        if line.startswith('MemAvailable'):
+            mem_available = int(list(filter(str.isdigit, line)))
+    mem_usage = (mem_total - mem_available) * 1.0 / mem_total
+    return mem_usage
+
+
+def get_disk_usage(path='/'):
+    vfs = os.statvfs(path)
+    available = vfs[statvfs.F_BAVAIL]*vfs[statvfs.F_BSIZE]/(1024*1024*1024)
+    capacity = vfs[statvfs.F_BLOCKS]*vfs[statvfs.F_BSIZE]/(1024*1024*1024)
+    usage = (capacity - available) * 1.0 / capacity
+    return usage
+
+def get_ext_disk_usage(disk_label):
+    """
+    :param disk_label: 外置硬盘的指定卷标
+    :return:外置硬盘的使用率，若无外置硬盘则返回空字符串
+    """
+    import subprocess
+    ext_disk_usage = subprocess.getoutput("df | awk '/%s/{print $5}'" % disk_label)
+    if ext_disk_usage.count('%') > 1:
+        raise Exception('There must more than one EXT-Disk (turn out to be %d)' % ext_disk_usage.count('%'))
+    for item in ext_disk_usage.split('\n'):
+        if '%' in item:
+            return int(item[:-1]) / 100.0
+    return -1
+
+def del_oldest_dir(path):
+    # 若路径最后带有/且不为根目录，则丢弃最后的/
+    if path[-1] == '/' and path != '/':
+        path = path[0:-1]
+    import subprocess
+    dirs = subprocess.getoutput("ls %s"%path)
+    if dirs == '':
+        raise Exception('The path has no dir!')
+    elif dirs[0:3] == 'ls:':
+        raise Exception(dirs)
+    oldest = dirs.split('\n')[0]
+    logging.getLogger('logger_del_oldest_dir').info('删除旧样本：%s/%s' % (path, oldest))
+    ret = subprocess.getoutput("rm -rf %s/%s"%(path, oldest))
+    if ret != '':
+        raise Exception(ret)
+
+# 判断是否有连接局域网
+# 返回True/False, ip/localhost
+def is_lan_activated():
+    import socket,fcntl, struct
+    _ip_addr = 'localhost'
+    for ifname in ['eth0', 'eth1', 'eth2', 'eth3', 'eth4', 'eth5']:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            inet = fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', ifname[:15]))
+            _ip = socket.inet_ntoa(inet[20:24])
+            if len(_ip.split('.')) == 4:
+                ret = True
+                _ip_addr = _ip
+            else:
+                ret = False
+        except Exception as e:
+            ret = False
+        if ret:
+            break
+    return ret, _ip_addr
+
+# 获取文件的md5校验
+def md5sum(filename):
+    fd = open(filename,"r")
+    fcont = fd.read()
+    fd.close()
+    fmd5 = hashlib.md5(fcont)
+    return str(fmd5.hexdigest())
+
+def transmit_decode(data):
+    try:
+        _base64_buffer = base64.b64decode(data)
+        _zlib_buffer = zlib.decompress(_base64_buffer)
+        _pickle_buffer = pickle.loads(_zlib_buffer)
+        return _pickle_buffer
+    except Exception as e:
+        print(e)
+        return None
+
+def transmit_encode(data):
+    try:
+        _pickle_buffer = pickle.dumps(data, 2)
+        _zlib_buffer = zlib.compress(_pickle_buffer)
+        _base64_buffer = base64.b64encode(_zlib_buffer)
+        return _base64_buffer
+    except Exception as e:
+        print(e)
+        return ''
+
+def get_mac_address():
+    mac_pattern = "dmesg |grep 'eth%d'|egrep -m 1 -o '[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}'"
+    for i in range(10):
+        _mac = subprocess.getoutput(mac_pattern % i)
+        if _mac:
+            break
+    else:
+        _mac = "00:00:00:00:00:00"
+    return _mac.replace(':','')
+
+
+def create_desktop_shortcut():
+    desktop_dir = os.path.expanduser("~/Desktop")
+    base_dir = sys.path[0]
+    entry = "[Desktop Entry]\n" \
+            "Version={version}\n" \
+            "Type=Application\n" \
+            "{display_names}" \
+            "Icon={icon_path}\n" \
+            "Exec={exe_path}\n" \
+            "Path={base_path}\n" \
+            "Comment=CVTE AOI Application\n" \
+            "Categories=Application\n" \
+            "Terminal=false\n"
+
+    if not os.path.isdir(desktop_dir):
+        if os.path.isdir(os.path.expanduser("~/桌面")):
+            desktop_dir = os.path.expanduser("~/桌面")
+        else:
+            desktop_dir = os.path.expanduser("~/")
+
+    if os.path.isfile(os.path.join(base_dir, "run_aoi")):
+        run_aoi = entry.format(version=getattr(os, "aoi_version", "1.0.0"),
+                               display_names="Name=AOI_EC\nName[zh_CN]=AOI_元件面\n",
+                               icon_path=os.path.join(base_dir, "aoi/res/app.jpg"),
+                               exe_path=os.path.join(base_dir, "run_aoi"),
+                               base_path=base_dir)
+        run_aoi_path = os.path.join(desktop_dir, "run_aoi.desktop")
+        with open(run_aoi_path, 'w') as f:
+            f.write(run_aoi)
+        os.chmod(run_aoi_path, 0o775)
+
+    if os.path.isfile(os.path.join(base_dir, "run_aoi_edit_ol")):
+        run_aoi = entry.format(version=getattr(os, "aoi_version", "1.0.0"),
+                               display_names="Name=AOI_EDITOR\nName[zh_CN]=AOI_编辑器\n",
+                               icon_path=os.path.join(base_dir, "aoi/res/edit_online.ico"),
+                               exe_path=os.path.join(base_dir, "run_aoi_edit_ol"),
+                               base_path=base_dir)
+        run_aoi_path = os.path.join(desktop_dir, "run_aoi_edit_ol.desktop")
+        with open(run_aoi_path, 'w') as f:
+            f.write(run_aoi)
+        os.chmod(run_aoi_path, 0o775)
+
+    if os.path.isfile(os.path.join(base_dir, "run_aoi_updater")):
+        run_aoi = entry.format(version=getattr(os, "aoi_version", "1.0.0"),
+                               display_names="Name=AOI_UPDATE\nName[zh_CN]=AOI_在线升级\n",
+                               icon_path=os.path.join(base_dir, "aoi/res/updater.ico"),
+                               exe_path=os.path.join(base_dir, "run_aoi_updater"),
+                               base_path=base_dir)
+        run_aoi_path = os.path.join(desktop_dir, "run_aoi_updater.desktop")
+        with open(run_aoi_path, 'w') as f:
+            f.write(run_aoi)
+        os.chmod(run_aoi_path, 0o775)
+
+    if os.path.isfile(os.path.join(base_dir, "run_aoi_helper")):
+        run_aoi = entry.format(version=getattr(os, "aoi_version", "1.0.0"),
+                               display_names="Name=AOI_HELP\nName[zh_CN]=AOI_远程协助\n",
+                               icon_path=os.path.join(base_dir, "aoi/res/helper.ico"),
+                               exe_path=os.path.join(base_dir, "run_aoi_helper"),
+                               base_path=base_dir)
+        run_aoi_path = os.path.join(desktop_dir, "run_aoi_helper.desktop")
+        with open(run_aoi_path, 'w') as f:
+            f.write(run_aoi)
+        os.chmod(run_aoi_path, 0o775)
+
+
+if __name__ == '__main__':
+    img = cv2.imread('rotate_rect.jpg')
+    cv2.imshow('test', img)
+    _angle = 0
+    _point = np.array((2, 1, 1))
+    _mov_matrix = np.eye(3)
+    _mov_matrix[:2, 2] = (2, 4)
+    _rot_matrix = cv2.getRotationMatrix2D((2, 1), 45, 1.0)
+    _rot_matrix = np.vstack((_rot_matrix, np.array([0, 0, 1])))
+    _rot_and_mov_mat = _mov_matrix.dot(_rot_matrix)
+    _mov_and_rot_mat = np.linalg.inv(_rot_and_mov_mat)
+    _pt1 = np.array([100, 400, 1])
+    _pt2 = _rot_and_mov_mat.dot(_pt1.T)
+    print(_pt1, '->', _pt2)
+    _pt1 = _mov_and_rot_mat.dot(_pt2.T)
+    print(_pt2, '->', _pt1)
+
+    # 先旋转再平移
+    print(_rot_and_mov_mat)
+    # 先平移再旋转
+    print(_rot_matrix.dot(_mov_matrix).dot(_point))
+
+    while True:
+        r_img = transform_image(img, center=(0, 0.01), angle=_angle, scale=3, keep_all=True)
+        _h, _w = img.shape[:2]
+        mat = get_rotate_mat(_w, _h, _angle, 3, True)
+        print('angle=%f' % _angle)
+        pts = [(0, 0, 1)]#, (w, 0, 1), (0, h, 1), (w, h, 1)
+        for i, pt in enumerate(pts):
+            r_pt = mat.dot(np.array(pt).T)
+            print(pt, '->', r_pt)
+            _x, _y = r_pt[:2]
+            # x, y = 10, 20
+            # r_img[y, x] = 255
+            cv2.circle(r_img, (int(_x), int(_y)), 3, (250, 50*i, 50*i), thickness=3)
+        cv2.imshow('rotate_1', r_img)
+        key = cv2.waitKey()&255
+        if key in [ord(' ')]:
+            _angle += 10
+            if _angle > 180:
+                break
+        else:
+            break

@@ -1,0 +1,197 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '17/4/7'
+@author = 'chenliang'
+@email = 'chenliang2380@cvte.com'
+'''
+
+from PyQt5.QtWidgets import *
+from PyQt5 import QtCore
+from PyQt5 import QtGui
+from FATERUI.common.camera import singleton
+from FATERUI.common.infrared import infrared
+from FATERUI.common.camera import cameramanage
+from FATERUI import imageview
+from FATERUI.common.camera import camera
+from FATERUI.tools.imagecover import arrayToQimage
+import threading
+import os
+import time
+
+from . import ui_settingdlg
+
+
+class SettingDlg(QDialog, ui_settingdlg.Ui_settingdlg):
+
+    showrecvive = QtCore.pyqtSignal(str)
+    warninginfo = QtCore.pyqtSignal(str)
+
+    insertcmd= QtCore.pyqtSignal(str)
+
+    def __init__(self):
+        super(SettingDlg, self).__init__()
+        self.setupUi(self)
+        self.scanDevice()
+        self._dev = infrared.Infrared()
+        self.messagegroupBox.setEnabled(False)
+        self.opendevicebtn.clicked.connect(self.openDevice)
+        self.insertcmd.connect(self.insertcommand)
+        self.sendBtn.clicked.connect(self.sendStr)
+        self.showrecvive.connect(self.showRecive)
+        self.clearBtn.clicked.connect(self.clearMessage)
+        self._process = None
+        self._imgView = imageview.ImageView()
+
+        self._imgView.simpleModel()
+        self.previewlayout.addWidget(self._imgView)
+        self.opencamerabtn.clicked.connect(self.initCamera)
+        self.warninginfo.connect(self.showWaring)
+        self.confirmBtn.clicked.connect(self.setcommandDict)
+        self.openfilebtn.clicked.connect(self.getCamfileDir)
+        self.vcameragbox.toggled.connect(self.setUseVirtualcamera)
+        self.camfileedit.setEnabled(False)
+        self._useVcamera=False
+        self._camfileDir=''
+        self._stopRun = False
+
+    def getCamfileDir(self):
+        openfile = QFileDialog(self,'Open file','*')
+        openfile.setFileMode(QFileDialog.DirectoryOnly)
+        openfile.exec_()
+        filedir = openfile.selectedFiles()
+        if filedir != '':
+            self._camfileDir = filedir[0]+'/'
+            cameramanage.CameraManage.setVirtualCamera(self._camfileDir)
+            self.camfileedit.setText(self._camfileDir)
+            print(self._camfileDir)
+
+    def getSetting(self):
+        cmdDict =self._dev.getcommandDict()
+        paramStr = {'Infraredparam':cmdDict}
+        return str(paramStr)
+
+    def setUseVirtualcamera(self,state):
+        self._useVcamera=state
+        print(self._useVcamera)
+
+    def loadSetting(self,setting):
+        if self._dev is not None:
+            self._dev.loadCommandDict(setting['Infraredparam'])
+
+        for k,v in list(self._dev.getcommandDict()['cmdDict'].items()):
+            self.insertcmd.emit(k)
+            # self.insertcommand(k)
+
+    def insertcommand(self,command):
+        if self.commandcbox.findText(command)<0:
+            self.commandcbox.addItem(command)
+
+    def scanDevice(self):
+        res = os.popen('ls /dev/ |grep ttyUSB*').readlines()
+        for resDevice in res:
+            self.infraredcBox.addItem(resDevice.replace('\n',''))
+        print(res, len(res))
+
+    def initCamera(self):
+        # cameramanage.CameraManage.initCamera()
+        self.startCapture()
+
+    def hideEvent(self, event):
+        self._dev.closeSer()
+        print('ser close event')
+        self._stopRun = True
+
+
+    def showEvent(self, event):
+        self._stopRun = False
+        if self._dev.getinitState():
+            self._dev.openSer()
+            self.messagegroupBox.setEnabled(True)
+            self.startReciveStr()
+
+    def closeEvent(self, QCloseEvent):
+        self.hide()
+
+    def startCapture(self):
+        self._process = threading.Thread(target = self.capImg)
+        self._process.start()
+
+    def capImg(self):
+        camstate=False
+        if self._useVcamera and self._camfileDir != '':
+            camstate = cameramanage.CameraManage.initCamera('virtualcamera')
+            cameramanage.CameraManage.setVirtualCamera(self._camfileDir)
+        else:
+            camstate = cameramanage.CameraManage.initCamera(self.cameratypecbox.currentText())
+
+
+        if camstate :
+            while not self._stopRun:
+                if self._useVcamera and self._camfileDir != '':
+                    img = cameramanage.CameraManage.captureImage('virtualcamera')
+                else:
+                    img = cameramanage.CameraManage.captureImage('mindvision')
+                if img is not None:
+                    qimg = arrayToQimage(img)
+                    self._imgView.setDisplayImage(qimg)
+                time.sleep(1)
+        else:
+            self._stopRun=True
+            self.warninginfo.emit('Init camera error')
+
+    def showWaring(self,waringstr):
+        QMessageBox.warning(self, 'FATER', waringstr)
+
+    def openDevice(self):
+        # dev = singleton.singleton(infrared.Infrared)
+        if not self._dev.getinitState():
+            if self._dev.openDevice('/dev/'+self.infraredcBox.currentText()):
+                QMessageBox.information(self,'FATER','Init infrared device success')
+                self.messagegroupBox.setEnabled(True)
+                self.startReciveStr()
+            else:
+                QMessageBox.warning(self,'FATER','Init infrared device failed')
+                self.messagegroupBox.setEnabled(False)
+        else:
+            self.messagegroupBox.setEnabled(True)
+            self.startReciveStr()
+
+    def setcommandDict(self):
+        if self.commandcbox.currentText() != '' and self.receivecbox.currentText() != '':
+            self._dev.insertDict(self.commandcbox.currentText(),self.receivecbox.currentText())
+            QMessageBox.information(self, 'FATER', 'Set cammand '+self.commandcbox.currentText()
+                                    +': '+self.receivecbox.currentText()+' OK')
+        else:
+            QMessageBox.warning(self, 'FATER', 'The command format is wrong or empty')
+
+    def startReciveStr(self):
+        self._process = threading.Thread(target=self.receiveStr)
+        self._process.start()
+
+    def showRecive(self,data):
+
+        recvdata = self.messageEdit.toPlainText() + 'Rev: ' + data + ' \n'
+        self.messageEdit.setPlainText(recvdata)
+        self.receivecbox.addItem(data)
+
+    def receiveStr(self):
+        recvdata = ''
+        while not self._stopRun:
+            print(self._stopRun)
+            recvdata = self._dev.recvdata()
+            if recvdata!='':
+                self.showrecvive.emit(recvdata)
+            time.sleep(0.5)
+
+    def sendStr(self):
+        sendstr=self.sendEdit.text()
+        if self._dev.senddata(sendstr):
+            showstr=self.messageEdit.toPlainText() + 'Send: ' + sendstr + ' \n'
+            self.messageEdit.setPlainText(showstr)
+        else:
+            QMessageBox.warning(self, 'FATER', 'Send data format error')
+
+    def clearMessage(self):
+        self.messageEdit.setPlainText('')

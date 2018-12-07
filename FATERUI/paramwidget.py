@@ -1,0 +1,293 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '17/5/4'
+@author = 'chenliang'
+@email = 'chenliang2380@cvte.cn'
+'''
+
+
+from PyQt5.QtWidgets import *
+from PyQt5 import QtCore
+from . import ui_paramwidget
+import cv2
+import tools.imagecover
+import os
+
+
+class ParamWidget(QWidget,ui_paramwidget.Ui_paramwidget):
+
+    __tempImage = None
+    __processImage = None
+
+    def __init__(self,param=''):
+        super(ParamWidget, self).__init__()
+        self.setupUi(self)
+        self._paramTypeWidget = {'T': QSpinBox, 'C': QComboBox, 'DT': QDoubleSpinBox}
+        self._paramType = {}
+        self._param = {}
+        self._paramWidget = {}
+        self._parentName=''
+        self._name=''
+        self._image = None
+        self._imageWidget = None
+        self._enableTemp = False
+        self._Qimage = None
+        self._showimage = None
+        self._roiwidget = None
+        self._arrToQimg=tools.imagecover.arrayToQimage
+        self._id = 0
+        self._isconnect=False
+        self._initParamStr()
+        if param != '':
+            self._param=param
+        self._basic_initUi()
+        self.init_ui()
+
+    def getParamStr(self):
+        param_str="['"+str(self._parentName)+"',\n'"+str(self._name)+"',\n"+str(self._param)+"]"
+        return param_str
+
+    def saveTmplImg(self,str):
+        pass
+        # if self.getTempImage() is not None:
+        #     print 'setTemplateImg',str+'Template.bmp'
+        #     cv2.imwrite(str+'Template.bmp',self.getTempImage())
+
+    def loadTmplImg(self,str):
+        pass
+
+        # if os.path.exists(str):
+        #     try:
+        #         tmplimg=cv2.imread(str+'Template.bmp')
+        #         ParamWidget.__setTempImage(tmplimg)
+        #     except Exception,e:
+        #         print Exception,'load template image error!'
+
+    def eventFilter(self,target,event):
+        if event.type() == QtCore.QEvent.Wheel:
+            return True
+        else:
+            return super(ParamWidget, self).eventFilter(target, event)
+
+    def setImagewidget(self, imageWidget):
+        self._imageWidget = imageWidget
+        self._imageWidget.setParamWidget(self)
+        if self._isconnect is not True:
+            self._imageWidget.setTemplateSignal.connect(self._setTemplate)
+            self._isconnect = True
+
+    def showTemplateImg(self):
+        if self.getTempImage() is not None:
+            self._Qimage = self._arrToQimg(self.getTempImage())
+            self._imageWidget.setDisplayImage(self._Qimage)
+        else:
+            self._imageWidget.setDisplayImage(None)
+
+    def initProcess(self):
+        self.setProcessImage(None)
+
+    def setProcessRes(self,img):
+
+        if img is not None:
+            self.setShowImage(img)
+            self.showProlateImg()
+        else:
+            self.setShowImage(None)
+            self.setProcessImage(None)
+
+    def setShowImage(self,img):
+        if img is not None:
+            self._showimage = self._arrToQimg(img)
+            self._imageWidget.setDisplayImage(self._showimage)
+
+    def showProlateImg(self):
+        if self._showimage is not None:
+            self._imageWidget.setDisplayImage(self._showimage)
+        else:
+            if self.getProcessImage() is not None:
+                self._showimage = self._arrToQimg(self.getProcessImage())
+                self._imageWidget.setDisplayImage(self._showimage)
+            else:
+                self._imageWidget.setDisplayImage(None)
+
+    def get_imageWidget(self):
+        return self._imageWidget
+
+    @classmethod
+    def __setTempImage(cls, img):
+        if img is not None:
+            cls.__tempImage = img.copy()
+
+    @classmethod
+    def getTempImage(cls):
+        return cls.__tempImage
+
+    @classmethod
+    def __setProImage(cls,img):
+        cls.__processImage = img
+
+    @classmethod
+    def getProcessImage(cls):
+        return cls.__processImage
+
+    def setTemplateImage(self,img):
+        if self._enableTemp:
+            ParamWidget.__setTempImage(img)
+
+    def setProcessImage(self,img):
+        ParamWidget.__setProImage(img)
+
+    def _setTemplate(self):
+
+        print("_setTemplate call---")
+        if self._enableTemp:
+            if self.getProcessImage() is not None:
+                if QMessageBox.Yes == QMessageBox.question(self,'FATER','Do you want to set this picture as a template?'):
+                    print('set template')
+                    self.setTemplateInfo()
+                    # self.setTemplateImage(self.getProcessImage())
+                    # cv2.imshow('template',self.getTempImage())
+                    # cv2.waitKey(0)
+                    # cv2.destroyAllWindows()
+                    QMessageBox.information(self,'FATER','Set template successfully!')
+            else:
+                QMessageBox.information(self, 'FATER', 'No image can be set as template!')
+        else:
+            QMessageBox.warning(self,'FATER Error','Template is not allowed here')
+
+    def setTemplateInfo(self):
+        pass
+
+    def _basic_initUi(self):
+        self.paramTable.verticalHeader().setVisible(False)
+        self.paramTable.horizontalHeader().setStretchLastSection(True)
+        self.paramTable.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.paramTable.setShowGrid(True)
+        self.paramTable.setGridStyle(QtCore.Qt.SolidLine)
+        self.paramTable.setWordWrap(True)
+        self.paramTable.setColumnCount(2)
+        self.paramTable.setEditTriggers(QAbstractItemView.NoEditTriggers)
+
+        item = QTableWidgetItem()
+        item.setText("Items")
+        self.paramTable.setHorizontalHeaderItem(0, item)
+        item = QTableWidgetItem()
+        item.setText("Value")
+        self.paramTable.setHorizontalHeaderItem(1, item)
+
+        if len(self._paramType) != 0:
+            print('len(self._paramType)', len(self._paramType))
+            self.paramTable.setRowCount(len(self._paramType))
+            idx = 0
+            for k, v in list(self._paramType.items()):
+                item = self._getValueItem(k, v)
+                if item is not None:
+                    self.paramTable.setCellWidget(idx, 1, item)
+                    self._paramWidget[item] = k
+                    item = QTableWidgetItem(k)
+                    self.paramTable.setItem(idx, 0, item)
+                    idx += 1
+    def run(self):
+        pass
+
+    def _getValueItem(self, k, v):
+
+        if v[0] == 'T':
+            item = QSpinBox()
+            item.valueChanged.connect(self._paramValueChange)
+            item.setRange(v[2], v[3])
+            item.setSingleStep(v[4])
+            item.setValue(v[1])
+            item.installEventFilter(self)
+            if self._param.get(k):
+                item.setValue(self._param[k])
+            return item
+
+        elif v[0] == 'DT':
+            item = QDoubleSpinBox()
+            item.valueChanged.connect(self._paramValueChange)
+            item.setRange(v[2], v[3])
+            item.setSingleStep(v[4])
+            item.setValue(v[1])
+            item.installEventFilter(self)
+            if self._param.get(k):
+                item.setValue(self._param[k])
+            return item
+
+        elif v[0] == 'C':
+            item = QComboBox()
+            item.currentTextChanged.connect(self._paramValueChange)
+            item.addItems(v[1])
+            item.installEventFilter(self)
+            if self._param.get(k):
+                item.setCurrentText(self._param[k])
+            return item
+
+        elif v[0] == 'CB':
+            item = QCheckBox()
+            item.clicked.connect(self._paramValueChange)
+            item.setChecked(v[1])
+            if self._param.get(k):
+                item.setChecked(self._param[k])
+            return item
+
+        elif v[0] == 'E':
+            item = QLineEdit()
+            item.textEdited.connect(self._paramValueChange)
+            item.setText(v[1])
+            if self._param.get(k):
+                item.setText(self._param[k])
+            return item
+
+        elif v[0] == 'R':
+            item = QLabel()
+            item.setText('[0,0,0,0]')
+            self._roiwidget = item
+            if self._param.get(k):
+                item.setText(str(self._param[k]))
+            return item
+        elif v[0] == 'I':
+            item = QLabel()
+            item.setText('')
+            if self._param.get(k):
+                item.setText(str(self._param[k]))
+            return item
+
+    def _paramValueChange(self,value):
+        # print self._paramWidget.get(self.focusWidget())
+        if self._paramWidget.get(self.focusWidget()) is not None:
+            self._param[self._paramWidget.get(self.focusWidget())] = value
+            self._paramChangeEvent(self._paramWidget.get(self.focusWidget()), value)
+        print(self._param)
+
+    def refreshParam(self,paramKey):
+        for k,v in list(self._paramWidget.items()):
+            if paramKey is v:
+                t = self._paramType[v][0]
+                if t == 'E' or t == 'R' or t == 'I':
+                    k.setText(self._param[v])
+                elif t == 'T' or t == 'DT':
+                    k.setValue(self._param[v])
+                elif t == 'C':
+                    k.setCurrentText(self._param[v])
+                elif t == 'CB':
+                    k.setChecked(self._param[v])
+                else:
+                    print('param type error.')
+
+    def _paramChangeEvent(self,key,value):
+        pass
+
+    def _initParamStr(self):
+        pass
+
+    def init_ui(self):
+        pass
+
+    def setRoi(self,roi):
+        if 'ROI' in self._param and roi is not None:
+            self._param['ROI'] = [roi.x(),roi.y(),roi.width(),roi.height()]
+            self._roiwidget.setText(str(self._param['ROI']))
+

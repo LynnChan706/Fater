@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/IGVTrueSenseUISample">
+        <file>res/play.bmp</file>
+        <file>res/stop.bmp</file>
+        <file>res/IGVTrueSenseUISample.bmp</file>
+    </qresource>
+</RCC>

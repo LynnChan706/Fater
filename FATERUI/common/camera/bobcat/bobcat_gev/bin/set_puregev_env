@@ -1,0 +1,103 @@
+#!/bin/bash
+
+export PUREGEV_ROOT=/opt/imperx/bobcat_gev
+export GENICAM_ROOT=$PUREGEV_ROOT/lib/genicam
+export GENICAM_ROOT_V2_4=$GENICAM_ROOT
+export GENICAM_LOG_CONFIG=$GENICAM_ROOT/log/config/DefaultLogging.properties
+export GENICAM_LOG_CONFIG_V2_4=$GENICAM_LOG_CONFIG
+export OMP_NUM_THREADS=4
+if [ "$HOME" = "/" ]; then
+  export GENICAM_CACHE_V2_4=/.config/Pleora/genicam_cache_v2_4
+else
+  export GENICAM_CACHE_V2_4=$HOME/.config/Pleora/genicam_cache_v2_4
+fi
+export GENICAM_CACHE=$GENICAM_CACHE_V2_4
+export GENICAM_LIB_DIR=$GENICAM_ROOT/bin/Linux64_x64
+mkdir -p $GENICAM_CACHE
+
+if [ -d /usr/lib/x86_64-linux-gnu/qt4 ]; then
+	QTDIR=/usr/lib/x86_64-linux-gnu/qt4
+	if [ ! -e $QTDIR/bin/qmake ]; then
+	   if [ ! -e /usr/bin/qmake ]; then 
+	     echo "WARNING: qmake is NOT INSTALLED, please install Qt4 development kit"
+	   else
+	     if [ ! -e /usr/bin/qmake-qt4 ]; then
+		  ln -s /usr/bin/qmake /usr/bin/qmake-qt4
+	     fi
+	   fi
+	else
+	   if [ ! -e /usr/bin/qmake-qt4 ]; then
+		ln -s $QTDIR/bin/qmake /usr/bin/qmake-qt4
+	   fi
+	fi
+	
+    if [ ! -d /usr/share/qt4/mkspecs ]; then
+	    if [ ! -e $QTDIR/mkspecs ]; then
+		  echo "WARNING: qt4/mkspecs does not exist, please install Qt4 development kit"
+        else
+	 	  ln -s $QTDIR/mkspecs /usr/share/qt4/mkspecs
+	   fi
+	fi
+else
+  if [ -d /usr/lib/qt4 ]; then
+	QTDIR=/usr/lib/qt4
+	if [ ! -e /usr/bin/qmake ]; then
+	   echo "WARNING: qmake is NOT INSTALLED, please install Qt4 development kit"
+	else
+	   if [ ! -e /usr/bin/qmake-qt4 ]; then
+		ln -s /usr/bin/qmake /usr/bin/qmake-qt4
+	   fi
+	fi
+	
+    if [ ! -d /usr/share/qt4/mkspecs ]; then
+	   if [ ! -e $QTDIR/mkspecs ]; then
+		  echo "WARNING: qt4/mkspecs does not exist, please install Qt4 development kit"
+       else
+	 	  ln -s $QTDIR/mkspecs /usr/share/qt4/mkspecs
+	   fi
+	fi
+  else
+	echo "QT4 NOT INSTALLED"
+	exit
+  fi
+fi
+if [ ! -e /usr/bin/qtcreator ]; then
+	if [ -d /opt/qtcreator-2.5.2/bin ]; then
+		QTCREATOR=/opt/qtcreator-2.5.2
+	else
+		echo "WARNING: qtcreator-2.5.2 is NOT INSTALLED"
+		echo "WARNING: Download from http://download.qt-project.org/archive/qtcreator/2.5/"
+	fi
+fi
+
+if ! echo ${LD_LIBRARY_PATH} | grep -q ${PUREGEV_ROOT}/lib; then
+  if [ "$LD_LIBRARY_PATH" = "" ]; then
+    LD_LIBRARY_PATH=${PUREGEV_ROOT}/lib
+  else
+    LD_LIBRARY_PATH=${PUREGEV_ROOT}/lib:${LD_LIBRARY_PATH}
+  fi
+fi
+
+if ! echo ${LD_LIBRARY_PATH} | grep -q ${GENICAM_LIB_DIR}; then
+  LD_LIBRARY_PATH=${GENICAM_LIB_DIR}:${LD_LIBRARY_PATH}
+fi
+
+export LD_LIBRARY_PATH
+
+if ! echo ${PATH} | grep -q ${PUREGEV_ROOT}/bin; then
+  PATH=${PUREGEV_ROOT}/bin:${PATH}
+fi
+
+if ! echo ${PATH} | grep -q ${QTDIR}/bin; then
+  PATH=${QTDIR}/bin:${PATH}
+fi
+
+if ! echo ${PATH} | grep -q ${QTCREATOR}/bin; then
+  PATH=${QTCREATOR}/bin:${PATH}
+fi
+
+export PATH
+export QTDIR
+
+unset GENICAM_LIB_DIR
+

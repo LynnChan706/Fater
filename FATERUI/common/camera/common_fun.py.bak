@@ -1,0 +1,616 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '15/3/31'
+@author = 'messi'
+@email = 'liaomingxi@cvte.cn'
+'''
+import numpy as np
+
+
+class IdManager(object):
+    def __init__(self, min_id=0):
+        self._tid = min_id
+
+    def get_new_id(self):
+        self._tid += 1
+        return self._tid
+
+    def roll_back(self):
+        '''
+        回滚元件ID
+        '''
+        self._tid -= 1
+        return self._tid
+
+
+def is_rect(rec):
+    '''
+    判断是否为矩形
+    :param rec:
+    :return:
+    '''
+    if len(rec) != 4:
+        return False
+    if isinstance(rec, dict):
+        rec = list(rec.itervalues())
+    for re in rec:
+        if not (isinstance(re, float)
+                or isinstance(re, int)
+                or isinstance(re, np.ndarray)
+                or isinstance(re, long)
+                or isinstance(re, np.int32)):
+            return False
+    return True
+
+
+def is_region(reg):
+    '''
+    判断是否为region
+    :param reg:
+    :return:
+    '''
+    if len(reg) != 2:
+        return False
+    for re in reg:
+        if not (isinstance(re, tuple) or isinstance(re, list) or isinstance(re, np.ndarray)):
+            return False
+        if len(re) != 2:
+            return False
+    return True
+
+
+def to_rect(reg):
+    '''
+    转换成矩形rect
+    :param reg:
+    :return:
+    '''
+    if is_rect(reg):
+        if isinstance(reg, dict):
+            x, y, w, h = reg['x'], reg['y'], reg['width'], reg['height']
+        else:
+            x, y, w, h = reg
+        rect = (float(x), float(y), float(w), float(h))
+        return rect
+    elif is_region(reg):
+        pt1, pt2 = reg
+        x = float(pt1[0] + pt2[0]) / 2
+        y = float(pt1[1] + pt2[1]) / 2
+        w = float(abs(pt2[0] - pt1[0]))
+        h = float(abs(pt2[1] - pt1[1]))
+        rect = (x, y, w, h)
+        return rect
+    else:
+        return reg
+
+
+def to_rectangle(reg):
+    '''
+    转换成rectangle类型
+    :param reg:
+    :return:
+    '''
+    x, y, w, h = to_rect(reg)
+    rectangle = (x - w / 2.0, y - h / 2.0, w, h)
+    return rectangle
+
+
+def to_region(rect):
+    '''
+    转换成region类型
+    :param rect:
+    :return:
+    '''
+    if is_rect(rect):
+        rect = to_rect(rect)
+        x, y, w, h = rect
+        pt1 = (float(x - w / 2.0), float(y - h / 2.0))
+        pt2 = (float(x + w / 2.0), float(y + h / 2.0))
+        region = (pt1, pt2)
+        return region
+    elif is_region(rect):
+        pt1, pt2 = rect
+        pt1 = (float(pt1[0]), float(pt1[1]))
+        pt2 = (float(pt2[0]), float(pt2[1]))
+        region = (pt1, pt2)
+        return region
+    else:
+        return rect
+
+
+def move(dxy, **kw):
+    '''
+    移动
+    :param dxy: 移动距离
+    :param kw:
+    :return:
+    '''
+    dx, dy = dxy[0], dxy[1]
+    if 'point' in kw:
+        x = dx + kw['point'][0]
+        y = dy + kw['point'][1]
+        point = (float(x), float(y))
+        return point
+    if 'rect' in kw:
+        x, y, w, h = kw['rect']
+        rect = move(dxy, point=(x, y)) + (float(w), float(h))
+        return rect
+    if 'region' in kw:
+        pt1, pt2 = kw['region']
+        region = (move(dxy, point=pt1), move(dxy, point=pt2))
+        return region
+    if 'polygon' in kw:
+        polygon = ()
+        for point in kw['polygon']:
+            polygon += (move(dxy, point=point),)
+        return polygon
+
+
+def expand(dxy, **kw):
+    '''
+    扩展区域
+    :param dxy:
+    :param kw:
+    :return:
+    '''
+    dx, dy = dxy
+    if 'rect' in kw:
+        x, y, w, h = kw['rect']
+        rect = (x, y, w + dx * 2, h + dy * 2)
+        return rect
+    if 'region' in kw:
+        pt1, pt2 = kw['region']
+        pt1 = move((-dx, -dy), point=pt1)
+        pt2 = move((dx, dy), point=pt2)
+        region = (pt1, pt2)
+        return region
+
+
+def zoom(scale, **kw):
+    '''
+    缩放
+    :param scale: 缩放比例
+    :param kw:
+    :return:
+    '''
+    if 'rect' in kw:
+        x, y, w, h = to_rect(['rect'])
+        rect = (x, y, w * scale, h * scale)
+        return rect
+    if 'region' in kw:
+        rect = zoom(scale, rect=to_rect(kw['region']))
+        return to_region(rect)
+
+
+def zoom_center(scale, center, **kw):
+    '''
+    按中心点缩放某个目标(point, rect, region, polygon)
+    :param scale: 缩放比例
+    :param center: 中心点
+    :param kw: point, rect, region, polygon
+    :return: 旋转后的坐标
+    '''
+    if 'rect' in kw:
+        x, y, w, h = to_rect(kw['rect'])
+        kw.pop('rect')
+        kw['point'] = (x, y)
+        x, y = zoom_center(scale, center, **kw)
+        rect = (x, y, w * scale, h * scale)
+        return rect
+    if 'region' in kw:
+        return to_region(zoom_center(scale, center, rect=to_rect(kw['region'])))
+    if 'point' in kw:
+        c_x, c_y = center
+        x, y = kw['point']
+        x = (x - c_x) * scale + c_x
+        y = (y - c_y) * scale + c_y
+        point = (x, y)
+        return point
+    if 'polygon' in kw:
+        polygon = ()
+        for point in kw['polygon']:
+            polygon += (zoom_center(scale, center, point=point),)
+        return polygon
+
+
+def is_point_in(point, **kw):
+    '''
+    判断点是不是在rect 或region内部
+    :param point:
+    :param kw:
+        rect:(x, y, w, h)
+        region((pt1_x, pt1_y), (pt2_x, pt2_y))
+        angle:rect或region自旋的角度，逆时针为正, 如果是polygon则忽略这个参数
+    :return:
+    '''
+    if 'rect' in kw:
+        x, y, w, h = to_rect(kw['rect'])
+    elif 'region' in kw:
+        x, y, w, h = to_rect(kw['region'])
+    elif 'polygon' in kw:
+        polygon = kw['polygon']
+        max_x = max([p[0] for p in polygon])
+        cross_count = 0
+        points = []
+        for index in range(len(polygon)):
+            p1 = polygon[index]
+            p2 = polygon[index-1]
+            cross_point = calc_linear_intersection((point, (max_x+100, point[1])), (p1, p2))
+            if cross_point is not None:
+                points.append(cross_point)
+                cross_count += 1
+        return cross_count % 2 == 1
+    else:
+        return False
+    if 'padding' in kw:
+        padding = float(kw['padding'])
+        x += padding
+        y += padding
+    if 'angle' in kw:
+        point = rotate(center=(x, y), angle=kw['angle'], point=point)
+    pt_x, pt_y = point
+    if (pt_x > (x - w / 2)) and (pt_x < (x + w / 2)) and (pt_y > (y - h / 2)) and (pt_y < (y + h / 2)):
+        return True
+    else:
+        return False
+
+
+def calc_points_included_angle(point, point1, point2):
+    '''
+    求三个点构成的三角形当中point所在的那个角度值
+    :param point: 中心点
+    :param point1: 左侧或右侧点
+    :param point2:另一侧点
+    :return:
+    '''
+    vector1 = (point1[0]-point[0], point1[1]-point[1])
+    vector2 = (point2[0]-point[0], point2[1]-point[1])
+    return calc_vector_included_angle(vector1, vector2)
+
+
+def calc_vector_included_angle(vector1, vector2):
+    '''
+    求两个向量的夹角
+    :param vector1:
+    :param vector2:
+    :return:夹角：单位 弧度
+    '''
+    a_2 = (vector1[0]-vector2[0])**2+(vector1[1]-vector2[1])**2
+    b_2 = vector1[0]**2+vector1[1]**2
+    c_2 = vector2[0]**2+vector2[1]**2
+    if min((b_2, c_2)) == 0:
+        return 0
+    angle_a = np.arccos((b_2+c_2-a_2)*0.5/np.sqrt(b_2)/np.sqrt(c_2))
+    return angle_a
+
+
+def calc_linear_intersection(line1, line2):
+    '''
+    计算两条线段的交点
+    :param line1: 直线1
+    :param line2:直线2
+    :return: 如果有交点，返回交点坐标，否则返回None
+    '''
+    def get_triangle_area(point, point1, point2):
+        vector1 = point1[0]-point[0], point1[1]-point[1]
+        vector2 = point2[0]-point[0], point2[1]-point[1]
+        area = vector1[1]*vector2[0]-vector1[0]*vector2[1]
+        return abs(area)/2.0
+    (x11, y11), (x12, y12) = line1
+    (x21, y21), (x22, y22) = line2
+    if max(x11, x12) < min(x21, x22) or min(x11, x12) > max(x21, x22) or\
+            max(y11, y12) < min(y21, y22) or min(y11, y12) > max(y21, y22):
+        return None
+    if x11-x12 == 0 and x21-x22 == 0:
+        return None
+    elif x11-x12 != 0 and x21-x22 != 0:
+        k1 = (y11-y12)/(x11-x12)
+        k2 = (y21-y22)/(x21-x22)
+        if abs(k1-k2) < 0.01:
+            return None
+    s1 = get_triangle_area(line2[1], line1[0], line1[1])
+    s2 = get_triangle_area(line2[0], line1[0], line1[1])
+    p_x = (s1*x21+s2*x22)/(s1+s2)
+    p_y = (s1*y21+s2*y22)/(s1+s2)
+    if p_x-min((x11, x12)) < -0.01 \
+            or p_x-min((x21, x22)) < -0.01 \
+            or p_x-max((x11, x12)) > 0.01 \
+            or p_x-max((x21, x22)) > 0.01:
+        return None
+    else:
+        return p_x, p_y
+
+
+def get_line_formula(line):
+    '''
+    求直线的解析式
+    ax+by+c = 0
+    :param line:((x1, y1), (x2, y2))
+    :return: a,b,c
+    '''
+    x1, y1, x2, y2 = line
+    a = y1-y2
+    b = x1-x2
+    c = -x2(y1-y2)+y2(x1-x2)
+    return a, b, c
+
+
+def is_on_the_side_of(point, **kw):
+    '''
+    ————4————
+    |        |
+    (1)      (3)
+    |        |
+    ————4————
+    四条边分别对应返回值为1,2,3,4
+    0的时候为不在边上
+    :param point:
+    :param kw:
+    :return:
+    '''
+    if 'rect' in kw:
+        x, y, w, h = kw['rect']
+        padding = kw['padding'] if 'padding' in kw else 1
+        if is_point_in(point, rect=(x - w / 2.0, y, padding * 2 + 1, h)):
+            return 1
+        if is_point_in(point, rect=(x, y + h / 2.0, w, padding * 2 + 1)):
+            return 2
+        if is_point_in(point, rect=(x + w / 2.0, y, padding * 2 + 1, h)):
+            return 3
+        if is_point_in(point, rect=(x, y - h / 2.0, w, padding * 2 + 1)):
+            return 4
+        return 0
+
+    elif 'region' in kw:
+        return is_on_the_side_of(point, rect=to_rect(kw['region']), **kw)
+
+
+def get_corner_point(**kw):
+    '''
+    得到顶点
+    :param kw:
+    :return:
+    '''
+    if 'rect' in kw:
+        x, y, w, h = kw['rect']
+        point_list = list()
+        point_list.append((x - w/2.0, y - h/2.0))
+        point_list.append((x - w/2.0, y + h/2.0))
+        point_list.append((x + w/2.0, y + h/2.0))
+        point_list.append((x + w/2.0, y - h/2.0))
+        return point_list
+    elif 'region' in kw:
+        return get_corner_point(rect=to_rect(kw['region']))
+
+
+def is_on_the_corner_of(point, **kw):
+    '''
+    (1)——————(4)
+    |        |
+    |        |
+    |        |
+    (2)——————(3)
+    四个角分别对应返回值为1,2,3,4
+    0的时候为不在角上
+    :param point:
+    :param kw:
+    :return:
+    '''
+    if 'rect' in kw:
+        x, y, w, h = kw['rect']
+        padding = kw['padding'] if 'padding' in kw else 3
+        if is_point_in(point, rect=(x - w / 2.0, y - h / 2.0, padding * 2 + 1, padding * 2 + 1)):
+            return 1
+        if is_point_in(point, rect=(x - w / 2.0, y + h / 2.0, padding * 2 + 1, padding * 2 + 1)):
+            return 2
+        if is_point_in(point, rect=(x + w / 2.0, y + h / 2.0, padding * 2 + 1, padding * 2 + 1)):
+            return 3
+        if is_point_in(point, rect=(x + w / 2.0, y - h / 2.0, padding * 2 + 1, padding * 2 + 1)):
+            return 4
+        return 0
+    elif 'region' in kw:
+        return is_on_the_corner_of(point, rect=to_rect(kw['region']), **kw)
+
+
+def is_rect_in(rec, **kw):
+    '''
+    判断矩形两个点是否在某个对象内
+    :param reg:
+    :param kw:可以的参数为rect,region,angle
+        angel:为rect,region自旋的角度
+    :return:
+    '''
+    return is_region_in(to_region(rec), **kw)
+
+
+def is_region_in(reg, **kw):
+    '''
+    判断矩形两个点是否在某个对象内
+    :param reg:
+    :param kw:可以的参数为rect,region,angle
+        angel:为rect,region自旋的角度
+    :return:
+    '''
+    angle = kw.get('angle', 0)
+    kw['angle'] = angle
+    return is_point_in(reg[0], **kw) and is_point_in(reg[1], **kw)
+
+
+def rotate(center, angle, **kw):
+    '''
+    让点按某个中心点旋转, 逆方向旋转
+    :param center:
+    :param angle:
+        逆时针旋转的角度
+    :param kw:
+        point：点坐标，当前只支持对点的旋转
+    :return:
+    '''
+    if 'point' in kw:
+        x, y = center
+        point = kw['point']
+        rad = angle*np.pi/180
+        delta_x, delta_y = point[0]-x, point[1]-y
+        distance = np.sqrt(delta_x**2+delta_y**2)
+        if distance == 0:
+            return point
+        theta = np.arctan2(delta_y/distance, delta_x/distance)
+        dx, dy = distance*np.cos(theta+rad), distance*np.sin(theta+rad)
+        point = (x+dx, y+dy)
+        return point
+
+
+def calc_vertex(rect, angle):
+    '''
+    计算矩形的顶点
+    :param rect:
+    :param angle: 逆时针自旋角度
+    :return:
+    '''
+    rad = np.deg2rad(angle)
+    x, y, w, h = rect
+    top_w = (w / 2.0 * np.cos(rad) - h / 2.0 * np.sin(rad))
+    top_h = (w / 2.0 * np.sin(rad) + h / 2.0 * np.cos(rad))
+    right_w = (w / 2.0 * np.cos(rad) + h / 2.0 * np.sin(rad))
+    right_h = (w / 2.0 * np.sin(rad) - h / 2.0 * np.cos(rad))
+    p0 = (x + top_w, y - top_h)
+    p1 = (x + right_w, y - right_h)
+    p2 = (x - top_w, y + top_h)
+    p3 = (x - right_w, y + right_h)
+    return p0, p1, p2, p3
+
+
+def min_enclosing_rect(rect, angle):
+    '''
+    计算最小外接矩形
+    :param rect:
+    :param angle:
+    :return:
+    '''
+    vertex = calc_vertex(rect, angle)
+    left = min([p[0] for p in vertex])
+    right = max([p[0] for p in vertex])
+    top = min([p[1] for p in vertex])
+    bottom = max([p[1] for p in vertex])
+    region = ((left, top), (right, bottom))
+    return to_rect(region)
+
+
+def calc_rect_area(rect):
+    '''
+    计算矩形面积
+    :param rect:
+    :return:
+    '''
+    x, y, w, h = to_rect(rect)
+    return w*h
+
+
+def calc_overlap_area(rect_a, rect_b):
+    '''
+    计算两个矩形的重叠面积
+    :param rect_a:
+    :param rect_b:
+    :return:
+    '''
+    (left_a, top_a), (right_a, bottom_a) = to_region(rect_a)
+    (left_b, top_b), (right_b, bottom_b) = to_region(rect_b)
+    if bottom_a < top_b or right_a < left_b or left_a > right_b or top_a > bottom_b:
+        return 0
+    top = np.max((top_a, top_b))
+    bottom = np.min((bottom_a, bottom_b))
+    right = np.min((right_a, right_b))
+    left = np.max((left_a, left_b))
+    w = right-left
+    h = bottom-top
+    if w < 0 or h < 0:
+        return 0
+    area = w*h
+    area = area if area > 0 else 0
+    return area
+
+def get_pcb_bom_device_by_aoipath(aoifilepath):
+    '''
+    get pcb name ,bom and device mac
+    :param: aoifilepath .eg: /home/bobliu/MSD6308.PB711-bom-device.aoi
+    :return: eg: MSD6308.PB711 , bom, device
+    '''
+    if aoifilepath == False:
+        return '','',''
+    import os
+    aoiname = os.path.basename(aoifilepath)[:-4]
+    board_name_1 = aoiname.find('-')
+    board_name_2 = aoiname.rfind('-')
+    pcb_name = aoiname[:board_name_1]
+    bom_name = aoiname[board_name_1+1:board_name_2]
+    device_name = aoiname[board_name_2+1:]
+    return pcb_name,bom_name,device_name
+
+
+class Cell(object):
+    def __init__(self, **kw):
+        self.__x = 0
+        self.__y = 0
+        self.__w = 0
+        self.__h = 0
+        if 'rect' in kw:
+            x, y, w, h = kw['rect']
+            self.__x, self.__y, self.__w, self.__h = float(x), float(y), float(w), float(h)
+        elif 'region' in kw:
+            pt1, pt2 = kw['region']
+            self.__x = (pt1[0] + pt2[0]) / 2.0
+            self.__y = (pt1[1] + pt2[1]) / 2.0
+            self.__w = abs(pt1[0] - pt2[0]) / 2.0
+            self.__h = abs(pt1[1] - pt2[1]) / 2.0
+
+    def to_rect(self):
+        rect = (self.__x, self.__y, self.__w, self.__h)
+        return rect
+
+    def to_region(self):
+        pt1 = (self.__x - self.__w / 2.0, self.__y - self.__h / 2.0)
+        pt2 = (self.__x + self.__w / 2.0, self.__y + self.__h / 2.0)
+        region = (pt1, pt2)
+        return region
+
+
+class Rect(Cell):
+    def __init__(self, rect):
+        super(Rect, self).__init__(rect=rect)
+
+
+class Region(Cell):
+    def __init__(self, region):
+        super(Region, self).__init__(region=region)
+
+
+if __name__ == '__main__':
+    _point = (0, 63)
+    pt = rotate((0, 0), -45, point=_point)
+    print _point, '->', pt
+    # return
+    _rect = {'y': 403L, 'x': 302L, 'width': 58L, 'height': 330L}
+    print is_rect(_rect), to_rect(_rect), len(_rect)
+    exit(0)
+    t_rect = to_rect([5, 8, 7, 6])
+    c_rect = Rect(rect=[5, 8, 7, 6])
+    import cv2
+    region_list = []
+    tick_0 = cv2.getTickCount()
+    for i in range(100000):
+        c_rect = Rect(rect=[5, 8, 7, 6])
+        region_list.append(c_rect.to_region())
+    tick_1 = cv2.getTickCount()
+    time_class = (tick_1 - tick_0) / cv2.getTickFrequency()
+    print 'spend times:', time_class
+
+    region_list = []
+    tick_0 = cv2.getTickCount()
+    for i in range(100000):
+        c_rect = to_rect([5, 8, 7, 6])
+        region_list.append(to_region(c_rect))
+    tick_1 = cv2.getTickCount()
+    time_tuple = (tick_1 - tick_0) / cv2.getTickFrequency()
+    print 'spend times:', time_tuple

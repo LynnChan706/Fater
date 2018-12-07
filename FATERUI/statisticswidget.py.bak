@@ -1,0 +1,30 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+'''
+@date = '17/4/7'
+@author = 'chenliang'
+@email = 'chenliang2380@cvte.com'
+'''
+
+from PyQt5.QtWidgets import *
+from PyQt5 import QtCore
+from PyQt5 import QtGui
+import ui_statisticswidget
+
+
+
+class StatisticsWidget(QWidget,ui_statisticswidget.Ui_staticsdgt):
+    def __init__(self):
+        super(StatisticsWidget,self).__init__()
+        self.setupUi(self)
+
+import sys
+
+if __name__ == '__main__':
+
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+    stadlg = StatisticsWidget()
+    stadlg.show()
+    app.exec_()

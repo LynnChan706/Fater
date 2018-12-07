@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Get the executable's absolute path
+DIRNAME=`dirname $0`
+DIRNAME=`cd $DIRNAME/..; pwd`
+
+# set env. vars
+export PUREGEV_ROOT=$DIRNAME
+export GENICAM_ROOT=$DIRNAME/lib/genicam
+export GENICAM_ROOT_V2_4=$GENICAM_ROOT
+export GENICAM_LOG_CONFIG=$DIRNAME/lib/genicam/log/config/DefaultLogging.properties
+export GENICAM_LOG_CONFIG_V2_4=$GENICAM_LOG_CONFIG
+export GENICAM_CACHE_V2_4=$HOME/.config/Pleora/genicam_cache_v2_4
+export GENICAM_CACHE=$GENICAM_CACHE_V2_4
+mkdir -p $GENICAM_CACHE
+
+# add to the LD_LIBRARIES_PATH
+if ! echo ${LD_LIBRARY_PATH} | /bin/grep -q $PUREGEV_ROOT/lib; then
+   if [ "$LD_LIBRARY_PATH" = "" ]; then
+      LD_LIBRARY_PATH=$PUREGEV_ROOT/lib
+   else
+      LD_LIBRARY_PATH=$PUREGEV_ROOT/lib:${LD_LIBRARY_PATH}
+   fi
+fi
+
+if [ `uname -m` == "x86_64" ]; then
+  GENICAM_LIB_DIR=bin/Linux64_x64
+else
+  GENICAM_LIB_DIR=bin/Linux32_i86
+fi
+
+if ! echo ${LD_LIBRARY_PATH} | /bin/grep -q $GENICAM_ROOT/$GENICAM_LIB_DIR; then
+   LD_LIBRARY_PATH=$GENICAM_ROOT/$GENICAM_LIB_DIR:${LD_LIBRARY_PATH}
+fi
+
+export LD_LIBRARY_PATH
+
+$PUREGEV_ROOT/bin/DualSource.bin
+

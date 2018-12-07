@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/IGVGainUISample">
+        <file>res/play.bmp</file>
+        <file>res/stop.bmp</file>
+        <file>res/IGVGainUISample.bmp</file>
+    </qresource>
+</RCC>

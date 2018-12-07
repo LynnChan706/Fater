@@ -1,0 +1,42 @@
+#!/usr/bin/env python2.7
+# coding=utf-8
+
+
+"""
+
+@date = '8/9/16'
+@author = 'chenjian'
+@email = 'chenjian@cvte.com'
+"""
+
+import time
+import cv2
+import os
+
+
+if __name__ == '__main__':
+    os.environ['GENICAM_ROOT_V2_4'] = '/opt/imperx/bobcat_gev/lib/genicam'
+    print(os.environ['GENICAM_ROOT_V2_4'])
+    import CameraBobcat
+    camera = CameraBobcat.CameraBobcat()
+    camera.open()
+
+    time.sleep(5)
+    print('set shutter', camera.set_shutter(400))
+    print('get shutter', camera.get_shutter())
+    print('set wb', camera.set_wb(200, 200, 200))
+    print('get wb', camera.get_white_balance_red(), camera.get_white_balance_green(), camera.get_white_balance_blue())
+    print('get_camera_id', camera.get_camera_id())
+    print('get_camera_temperature', camera.get_camera_temperature())
+    print('get_firmware_version', camera.get_firmware_version())
+
+    # for i in range(500):
+    #     img = camera.get_image_in_numpy()
+    #     # print 'frame rate: ', camera.get_frame_rate()
+    #     if img.size > 1:
+    #         cv2.imshow("tests", img)
+    #         cv2.waitKey(1)
+    #     # print img
+    #     # cv2.waitKey(100)
+    #     print 'get_frame_rate', camera.get_frame_rate()
+    # print 'end.'

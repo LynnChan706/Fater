@@ -1,0 +1,116 @@
+################################################################################
+#
+# readme.1st
+# Pleora Technologies Inc.
+# Copyright (c) 2002-2015
+# for ebUniversalProForEthernet-x86_64.ko 5.1.4 build 3606
+#
+################################################################################
+
+How to load ebUniversalProForEthernet-x86_64.ko
+
+The following script is available to assist you to load the module:
+
+    bash load.sh [--help]
+        where
+            --help             Display this help
+
+This script will take the current version of the module and load it in the memory.
+It will also create all the expected device nodes and also configure the networl stack.
+
+If a user want to make the module automatically, it can call this script a linux load
+time.
+
+Note that the target PC must have been compiled to allowed loadable module. This can be done in the linux
+kernel configuration menu with:
+  Loadable module support  --->
+    [*] Enable loadable module support
+    [*]   Module unloading 
+    
+This also involve that your target has the application insmod and rmmod to load and unload the module.  
+
+################################################################################
+
+How to unload ebUniversalProForEthernet-x86_64.ko
+
+The following script is available to assist you to unload the module:
+
+    bash unload.sh [--help]
+        where
+            --help             Display this help
+
+The script will unload the module from memory and cleanup the system.
+
+################################################################################
+
+How to build ebUniversalProForEthernet-x86_64.ko
+
+The eBUS Universal Pro module can be rebuild by customer to work on different
+kernel. It must also be rebuild after a kernel update. 
+
+The code is split into 2 main parts to allow an easy recompilation and distribution.
+
+The first part is the libebTransportLayer-x86_64 static library that contains the logic of
+the driver. This part is not refering to any files from the kernel and only depend
+on itself to be build.
+
+The second part is an abstraction layer that include all the dependencies on the 
+kernel header files. It can be subdivised into a bunch of wrappers, the main module
+structure and a netfilter hook.
+
+To build this module, you must first ensure that the kernel header files
+you want to build agains are installed on your computer. You can only compile the 
+32 bits module against the 32 bits linux kernel and a 64 bits module against a 64
+bits linux kernel.
+
+Compiling the module:
+    bash build.sh [--output=OUTPUT] [--kernel=KERNEL] [--help]
+		where 
+            --src=SRC_FOLDER is the location where the source code is locate
+			--output=OUTPUT is the location where the module folder
+				will be create by the script. This folder will contains all the
+				everything needed for the distribution of the module. 
+			--kernel=KERNEL point to the kernel header files. This optional argument
+				is only	required when cross-compiling for another kernel that 
+				is not the one actually in use by your computer
+				i.e. /lib/modules/2.6.18-92.el5/build
+            --cross_compile=PATH/PREFIX is a variable containing the full path to the prefix 
+                compiler tool as the CROSS_COMPILE variable used by the
+                linux kernel Makefiles  
+                i.e. [some path on your hd]/bin/powerpc-e500v2-linux-gnuspe-
+    		--help Display the help about the script build.sh
+
+By default, the build can be done when installed in the default location by running the command : 
+    ./build.sh
+without parameters. This will create a the module for a host and for this host. 
+
+################################################################################
+
+How to build ebUniversalProForEthernet-x86_64.ko for a different kernel than the one currently used
+
+If you have to compile the module for the current host but with a different kernel,
+you can use the command : 
+    ./build.sh --kernel=/lib/modules/[Kernel version]/build
+This should build it without the need to reboot on the given kernel.
+
+################################################################################
+
+How to cross-compile ebUniversalProForEthernet-x86_64.ko
+
+To cross-compile the module for a different target, you will have to provide
+more information when calling the build script. Modify the command :
+    ./build.sh --kernel=../../BuildRoot/buildroot-2013.02/output/target/lib/modules/3.8.4-rt2/build
+       --cross_compile=../../x-tools/powerpc-e500v2-linux-gnuspe/bin/powerpc-e500v2-linux-gnuspe-
+The --kernel will point to the build folder of the linux tree, the --cross_compile will contains
+the full path and the prefix for the compilation tools.
+
+################################################################################
+  
+Why do I get a tainted kernel message in the /var/log/messages when loading ebUniversalProForEthernet-x86_64.ko
+
+A message looking like:
+  [ 1307.978398] ebUniversalPro: module license 'ebUniversalPro-ppc' taints kernel.
+can be added to /var/log/messages because the ebUniversalProForEthernet-x86_64.ko is not a GPL
+module.
+
+################################################################################
